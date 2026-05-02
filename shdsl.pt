@@ -97,7 +97,7 @@ def test_result_str_starting_pipeline():
     res2 = res | sh.sed('s/f/X/')
     print(res2, str(res2))
 
-#def test_chain_pipe():
-#    res = sh.echo("\n".join(['three','line','doc'])) | sh.rev
-#    print(res)
-#    assert 0
+def test_chain_pipe():
+    res = "\n".join(['three','line','doc'])
+    sh.echo(str(res))
+    assert 0
