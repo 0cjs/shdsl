@@ -1,0 +1,101 @@
+"""Demonstrate and test FIFO patterns in shdsl."""
+import os
+import sys
+import threading
+sys.path.insert(0, "/home/claude")
+
+from shdsl import sh, Fifo
+
+print("=" * 60)
+print("Pattern 1: write_text + cat")
+print("=" * 60)
+# A FIFO acts as a path. Writer goes in a background thread because
+# open() on a FIFO blocks until both ends are open.
+with sh.fifo() as f:
+    print(f"  fifo path: {f}")
+    writer = f.write_text("hello via fifo\nsecond line\n")
+    out = str(sh.cat(f))
+    writer.join()
+    print(f"  reader saw: {out!r}")
+    assert "hello via fifo" in out
+
+print("\n" + "=" * 60)
+print("Pattern 2: producer command writes, consumer command reads")
+print("=" * 60)
+# One command's stdout is redirected to the FIFO (in a thread),
+# another command reads from the FIFO as a file.
+with sh.fifo() as f:
+    # Producer: write seq output to the FIFO in a background thread.
+    # We redirect via shell-style > using the FIFO's path.
+    def producer():
+        sh.seq("1", "5") > str(f)
+    t = threading.Thread(target=producer, daemon=True)
+    t.start()
+
+    # Consumer reads as if it's a regular file
+    result = str(sh.wc("-l") < str(f))
+    t.join()
+    print(f"  wc -l of seq 1 5 via fifo: {result.strip()!r}")
+    assert result.strip().startswith("5")
+
+print("\n" + "=" * 60)
+print("Pattern 3: tee fan-out — one input, two consumers via FIFOs")
+print("=" * 60)
+# Classic FIFO trick: tee writes to two FIFOs, two consumers read independently.
+# This is something plain `|` can't do.
+with sh.fifo() as fa, sh.fifo() as fb:
+    # Start two readers in background
+    results = {}
+    def reader(name, fifo_path):
+        results[name] = str(sh.wc("-c") < fifo_path).strip()
+
+    ta = threading.Thread(target=reader, args=("a", str(fa)), daemon=True)
+    tb = threading.Thread(target=reader, args=("b", str(fb)), daemon=True)
+    ta.start()
+    tb.start()
+
+    # Producer: tee writes the same input to both FIFOs
+    # (and to stdout, which we discard)
+    data = "the quick brown fox\n"
+    (data | sh.tee(str(fa), str(fb))).run()
+
+    ta.join(timeout=2)
+    tb.join(timeout=2)
+    print(f"  reader a (wc -c): {results.get('a')!r}")
+    print(f"  reader b (wc -c): {results.get('b')!r}")
+    assert results["a"] == results["b"] == "20"
+
+print("\n" + "=" * 60)
+print("Pattern 4: explicit path with sh.mkfifo")
+print("=" * 60)
+path = "/tmp/shdsl_demo_fifo"
+if os.path.exists(path):
+    os.unlink(path)
+
+with sh.mkfifo(path) as f:
+    assert os.path.exists(path)
+    assert os.path.exists(str(f))   # PathLike works
+    print(f"  created fifo at: {f}")
+    f.write_text("data")
+    out = str(sh.cat(f))
+    print(f"  read back: {out!r}")
+
+# context manager cleaned it up
+assert not os.path.exists(path)
+print(f"  cleaned up after context exit: {not os.path.exists(path)}")
+
+print("\n" + "=" * 60)
+print("Pattern 5: pass FIFO as file argument to grep")
+print("=" * 60)
+# grep treats the FIFO like any other file
+with sh.fifo() as f:
+    f.write_text("apple\nbanana\napricot\ncherry\n")
+    matches = str(sh.grep("^a", str(f)))
+    print(f"  matches: {matches!r}")
+    assert "apple" in matches
+    assert "apricot" in matches
+    assert "banana" not in matches
+
+print("\n" + "=" * 60)
+print("ALL FIFO TESTS PASSED")
+print("=" * 60)
