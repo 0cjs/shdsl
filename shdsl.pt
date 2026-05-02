@@ -84,3 +84,9 @@ def test_int_coercion():
 def test_with_env_builder():
     result = sh.printenv('FOO').with_env(FOO='bar')
     assert str(result) == 'bar'
+
+def test_cat_count():
+    doc = "\n".join(['three','line','doc'])
+    res = int(str(sh.echo(doc) | sh.wc('-l')).strip())
+    assert '3' == str(res)
+
