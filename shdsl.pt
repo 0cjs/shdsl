@@ -90,3 +90,14 @@ def test_cat_count():
     res = int(str(sh.echo(doc) | sh.wc('-l')).strip())
     assert '3' == str(res)
 
+def test_result_str_starting_pipeline():
+    res = sh.echo('foobar') | sh.sed ('s/o/O/g')
+    print(res, str(res))
+    res = str(res)
+    res2 = res | sh.sed('s/f/X/')
+    print(res2, str(res2))
+
+#def test_chain_pipe():
+#    res = sh.echo("\n".join(['three','line','doc'])) | sh.rev
+#    print(res)
+#    assert 0
