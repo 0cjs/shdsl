@@ -1,2 +1,3 @@
 #   Random shit that devs do not want committed.
 /tmp/
+/.build/
