@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+trap 'ec=$?; echo 1>&2 "INTERNAL ERROR: ec=$ec line=$LINENO cmd=$BASH_COMMAND";
+    exit $ec;' ERR
+
+#   First arg is the exit code; remaining args are echoed to stderr.
+die()  { ec="$1"; shift; echo 1>&2 "ERROR ($ec):" "$@"; exit $ec; }
+
+#   The `trap` above will print INTERNAL ERROR on unchecked failures. If
+#   you're running something you expect may fail, and when it does it's not
+#   an error in this script, use `|| fail` to instead fail the build.
+fail() { ec=$?; echo "FAILED exitcode=$ec ($(elapsed)s)"; exit $ec; }
+
+warn() { echo 1>&2 "WARNING:" "$@"; }
+vecho() { [[ -z $verbose ]] && return 0; echo "$@"; }
+notverbose() {
+    #   Echo $1 when not verbose, otherwise nothing.
+    #   E.g. `$(notverbose --quiet)`.
+    [[ -z $verbose ]] && echo $1 || true;
+}
+
+elapsed_start=$(date +%s)
+elapsed() { echo $(( $(date +%s) - $elapsed_start )); }
+
+#   True if version number $1 ≥ $2. Handles 2.10 > 2.9.
+#   `sort -V` is in Gnu coreutils, BSD, and MacOS ≥ 10.3.
+ver_ge() {
+    [ "$2" = "$(printf '%s\n' "$1" "$2" | sort -V | head -n1)" ]
+}
+
+####################################################################
+
+PROJDIR=$(cd "$(dirname "$0")" && pwd -P)
+. $PROJDIR/pactivate -q
+cd "$PROJDIR"
+
+PYTHONPATH="$PROJDIR" pytest -p pytest_pt "$@"

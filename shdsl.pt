@@ -1,0 +1,86 @@
+''' Functional tests for shdsl. '''
+
+from    shdsl import  CommandError, cmd, pipe, sh
+import  pytest
+
+def test_simple_command_str_coercion():
+    assert str(sh.echo('hello world')) == 'hello world'
+
+def test_pipeline_with_pipe_operator():
+    out = str(sh.echo('apple\nbanana\ncherry') | sh.grep('an'))
+    assert 'banana' in out
+
+def test_three_stage_pipeline():
+    text = 'foo\nbar\nfoo\nbaz\nfoo\n'
+    count = text | sh.grep('foo') | sh.wc('-l')
+    assert str(count).strip() == '3'
+
+def test_string_as_stdin_via_pipe():
+    out = 'hello\nworld\n' | sh.tr('a-z', 'A-Z')
+    assert 'HELLO' in str(out)
+
+def test_redirection_write_and_append(tmp_path):
+    f = tmp_path / 'out.txt'
+    sh.echo('first line') > str(f)
+    sh.echo('second line') >> str(f)
+    content = str(sh.cat(str(f)))
+    assert 'first line' in content
+    assert 'second line' in content
+
+def test_input_redirection(tmp_path):
+    f = tmp_path / 'in.txt'
+    sh.echo('a\nb\nc') > str(f)
+    result = sh.wc('-l') < str(f)
+    assert str(result).strip() == '3'
+
+def test_iteration_yields_lines():
+    lines = list(sh.echo('one\ntwo\nthree'))
+    assert lines == ['one', 'two', 'three']
+
+def test_run_returns_full_result():
+    r = sh.ls('/nonexistent_path_xyz').run()
+    assert r.returncode != 0
+    assert not r.ok
+
+def test_checked_raises_on_failure():
+    with pytest.raises(CommandError):
+        sh.ls('/nonexistent_path_xyz').checked().run()
+
+def test_cmd_helper_argv():
+    assert 'via cmd helper' in str(cmd('echo', 'via cmd helper'))
+
+def test_cmd_helper_shell_string():
+    assert 'hello from string' in str(cmd('echo hello from string'))
+
+def test_pipe_helper():
+    result = pipe(
+        sh.echo('a\nb\nc\nd'),
+        sh.grep('[bc]'),
+        sh.sort('-r'),
+    )
+    assert str(result) == 'c\nb'
+
+def test_cd_context_manager():
+    with sh.cd('/tmp'):
+        assert str(sh.pwd()) == '/tmp'
+
+def test_env_context_manager():
+    with sh.env(MY_TEST_VAR='hello123'):
+        assert str(sh.printenv('MY_TEST_VAR')) == 'hello123'
+
+def test_background_execution():
+    bg = sh.sleep('0.2').bg()
+    result = bg.wait()
+    assert result.returncode == 0
+
+def test_bool_coercion():
+    assert bool(sh.true()) is True
+    assert bool(sh.false()) is False
+
+def test_int_coercion():
+    assert int(sh.true()) == 0
+    assert int(sh.false()) == 1
+
+def test_with_env_builder():
+    result = sh.printenv('FOO').with_env(FOO='bar')
+    assert str(result) == 'bar'
